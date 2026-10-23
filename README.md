@@ -151,6 +151,6 @@ server_dir/
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-测试覆盖配置路径与端口限制、新建数据库及保留已有存档、服务端网页的 Host/Origin 限制。CI 不包含游戏文件，不执行完整游戏流程。
+测试覆盖配置路径与端口限制、新建数据库及保留已有存档、服务端网页的 Host/Origin 限制。`ci/windows-tests.yml` 是可选 GitHub Actions 模板，目前未启用；拥有工作流写入权限后，可将它复制到 `.github/workflows/test.yml`。这些测试不包含游戏文件，不执行完整游戏流程。
 
 代码采用 MIT；`vendor/migrations` 来自 Lunar Tear v1.0.2，保留上游 MIT 许可。scrcpy 由使用者下载，采用 Apache-2.0。详见 [THIRD_PARTY.md](THIRD_PARTY.md)。本项目与游戏发行商及上述上游项目无隶属关系。
