@@ -18,3 +18,5 @@ dist/
 *.jks
 .env*
 assets/
+!docs/assets/
+!docs/assets/**
