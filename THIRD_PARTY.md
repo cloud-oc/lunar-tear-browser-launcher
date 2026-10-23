@@ -5,3 +5,4 @@
 - aiohttp: https://github.com/aio-libs/aiohttp — Apache-2.0, installed through pip.
 - psutil: https://github.com/giampaolo/psutil — BSD-3-Clause, installed through pip.
 - MuMu, Android platform tools, and game client/resources are not distributed by this repository. Their respective licenses and terms apply.
+- Marcellus font: https://github.com/google/fonts/tree/main/ofl/marcellus — SIL Open Font License 1.1. Self-hosted for the project website; license in `docs/assets/OFL.txt`. Website geometric artwork is original, not official game art.
