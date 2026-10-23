@@ -1,34 +1,30 @@
 # Lunar Tear Browser Launcher
 
-**[Website](https://cloud-oc.github.io/lunar-tear-browser-launcher/) · [Download](https://github.com/cloud-oc/lunar-tear-browser-launcher/archive/refs/heads/main.zip)**
+[Website](https://cloud-oc.github.io/lunar-tear-browser-launcher/?lang=en) · [Download ZIP](https://github.com/cloud-oc/lunar-tear-browser-launcher/archive/refs/heads/main.zip)
 
-**English** · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja.md)
+[English](README.md) · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja.md)
 
-Play through your local browser. The game runs in an Android emulator; this launcher connects **Lunar Tear + Android + scrcpy** on your Windows PC.
+Connect **Lunar Tear + an Android emulator/device + your browser** on Windows, macOS or Linux. MuMu is optional.
 
-## Before you start
+Python 3.10+, Chrome/Edge, ADB (Android platform-tools), and your own patched global 3.7.1 APK, Android assets and patched Master Data.
 
-- Windows 10/11, [Python 3.10+](https://www.python.org/downloads/windows/), Chrome or Edge.
-- An ADB-enabled Android emulator. **MuMu Android 15 is tested**; other compatible emulators are untested.
-- Your own **global 3.7.1 APK patched for Lunar Tear**, Android assets and patched Master Data. [Preparation guide →](docs/guide.en.md)
+1. Extract this project. Start your Android emulator/device and enable ADB.
+2. Run Setup. Edit `config.json` if needed: `adb: "auto"` finds ADB; `serial: "auto"` selects the only connected device. With multiple devices, use Devices below and set the exact ID.
+3. Run Tools and Database below; prepare game files using the detailed guide.
+4. Run Check, then Play. In the browser choose **「連接畫面」(Connect screen) →「啟動遊戲」(Launch game)**.
 
-## First setup
+| Task | Windows (PowerShell) | macOS / Linux (Terminal) |
+|---|---|---|
+| Setup | `.\setup.cmd` | `sh setup.sh` |
+| Devices | `.\launch.cmd devices` | `sh launch.sh devices` |
+| Tools | `.\launch.cmd fetch-tools` | `sh launch.sh fetch-tools` |
+| Database | `.\launch.cmd init-db` | `sh launch.sh init-db` |
+| Check | `.\doctor.cmd` | `sh doctor.sh` |
+| Play | `.\start.cmd` | `sh start.sh` |
+| Stop | `.\stop.cmd` | `sh stop.sh` |
 
-1. Download and extract this project. Run **`setup.cmd`**.
-2. Edit **`config.json`**: set your ADB path, emulator connection and server folder.
-3. Open a terminal in the project folder and run:
+Windows x64; macOS/Linux x64 and ARM64, matching upstream binaries. Generic ADB accepts emulator IDs, TCP and USB devices. Android must support the game’s ARM64 libraries, ADB reverse and scrcpy.
 
-   ```powershell
-   .\.venv\Scripts\python.exe launcher.py fetch-tools
-   .\.venv\Scripts\python.exe launcher.py init-db
-   ```
+**Experimental:** The additional platform/emulator combinations have not been tested. No game files or translation patches are included; full gameplay is not guaranteed. GitHub Pages hosts project information only.
 
-4. Prepare your game files using the [guide](docs/guide.en.md), then run **`doctor.cmd`**.
-
-## Play
-
-Double-click **`start.cmd` → Connect screen → Launch game**. The local controls are currently labeled **「連接畫面」→「啟動遊戲」**. Use **`stop.cmd`** when finished.
-
-**Experimental:** streaming and server connectivity are verified; a full playthrough is not. Game-language availability is not guaranteed. Game files and saves are not included. The public website is a project page, not a hosted game.
-
-[Detailed setup & troubleshooting](docs/guide.en.md) · [Upstream Lunar Tear](https://github.com/Walter-Sparrow/lunar-tear) · [Licenses](THIRD_PARTY.md)
+[Detailed guide / 详细指南](docs/guide.en.md) · [Lunar Tear upstream](https://github.com/Walter-Sparrow/lunar-tear) · [Licenses](THIRD_PARTY.md)

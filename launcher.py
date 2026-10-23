@@ -1,4 +1,4 @@
-"""Local-only Windows launcher. No game files are downloaded by this project."""
+"""Local browser launcher for Windows, macOS and Linux; vendor-neutral ADB."""
 import argparse
 from contextlib import closing
 import hashlib
@@ -17,13 +17,12 @@ import zipfile
 
 import psutil
 from app_config import ROOT, PACKAGE, load_config, asset_status
+from platform_support import HIDDEN, binary, server_release, extract_server
+from android_device import resolve_device, emulator_start_command
 
-HIDDEN = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 TOOLS = {
     'scrcpy': ('https://github.com/Genymobile/scrcpy/releases/download/v3.3.4/scrcpy-server-v3.3.4',
-               '8588238c9a5a00aa542906b6ec7e6d5541d9ffb9b5d0f6e1bc0e365e2303079e'),
-    'server': ('https://github.com/Walter-Sparrow/lunar-tear/releases/download/v1.0.2/lunar-tear-server-v1.0.2-windows-amd64.zip',
-               'd8f6330a8f3a8788a89ba8ecfc01a5ff40ab566a9c46d9ff6fd0929503dd5f0a')}
+               '8588238c9a5a00aa542906b6ec7e6d5541d9ffb9b5d0f6e1bc0e365e2303079e')}
 
 def run(args, **kw):
     return subprocess.run([str(a) for a in args], check=True, creationflags=HIDDEN, **kw)
@@ -46,26 +45,17 @@ def download(url, destination, digest):
     tmp.replace(destination)
 
 def fetch_tools(c):
+    prefix,filename,url,digest = server_release()
     download(*[TOOLS['scrcpy'][0], c['scrcpy_server'], TOOLS['scrcpy'][1]])
     server = Path(c['server_dir'])
-    if (server/'bin/dev.exe').is_file():
+    if binary(server,'dev').is_file():
         print('Using existing server directory; version must be v1.0.2.')
         return
     if server.exists() and any(server.iterdir()):
         raise RuntimeError('Refusing to overwrite a nonempty server directory')
-    archive = Path(c['_runtime'])/'downloads/server-v1.0.2.zip'
-    download(TOOLS['server'][0], archive, TOOLS['server'][1])
-    with zipfile.ZipFile(archive) as z:
-        prefix = 'lunar-tear-server-v1.0.2-windows-amd64/'
-        for item in z.infolist():
-            if not item.filename.startswith(prefix): raise RuntimeError('Unexpected ZIP root')
-            rel = Path(item.filename[len(prefix):])
-            target = (server/rel).resolve()
-            if not target.is_relative_to(server.resolve()): raise RuntimeError('Unsafe ZIP path')
-            if item.is_dir(): target.mkdir(parents=True, exist_ok=True)
-            else:
-                target.parent.mkdir(parents=True, exist_ok=True)
-                with z.open(item) as src, target.open('wb') as out: shutil.copyfileobj(src, out)
+    archive = Path(c['_runtime'])/'downloads'/filename
+    download(url,archive,digest)
+    extract_server(archive,server,prefix)
     print('Pinned upstream tools ready.')
 
 def init_db(c):
@@ -86,14 +76,15 @@ def init_db(c):
             version = int(f.name.split('_')[0])
             db.executescript('BEGIN;\n'+sql+f'\nINSERT INTO goose_db_version(version_id,is_applied) VALUES ({version},1);\nCOMMIT;')
         if db.execute('PRAGMA integrity_check').fetchone()[0] != 'ok': raise RuntimeError('Database integrity check failed')
-    # Windows rename does not overwrite an existing destination.
-    temp.rename(target)
+    # Exclusive creation on every platform; never replace an existing save.
+    with temp.open('rb') as src,target.open('xb') as dst: shutil.copyfileobj(src,dst)
+    temp.unlink()
     print('New database initialized.')
 
 def import_assets(c):
     archive = Path(c['asset_archive'])
     if not c['asset_archive'] or not archive.is_file(): raise RuntimeError('Set asset_archive to your local Android .7z archive')
-    if not Path(c['seven_zip']).is_file(): raise RuntimeError('Set seven_zip to 7z.exe')
+    if not shutil.which(c['seven_zip']): raise RuntimeError('Install 7-Zip and set seven_zip to 7zz/7z/7z.exe')
     if c.get('asset_sha1'):
         h = hashlib.sha1()
         with archive.open('rb') as f:
@@ -116,23 +107,35 @@ def import_assets(c):
 def doctor(c):
     failed = []
     for label, path in [('ADB',c['adb']),('scrcpy',c['scrcpy_server']),
-                        ('server',str(Path(c['server_dir'])/'bin/dev.exe')),
+                        ('server',str(binary(c['server_dir'],'dev'))),
                         ('database',str(Path(c['server_dir'])/'db/game.db'))]:
-        ok = Path(path).is_file()
+        ok = bool(shutil.which(path)) if label in ('ADB','server') else Path(path).is_file()
         print(('OK   ' if ok else 'FAIL ')+label+': '+path)
         if not ok: failed.append(label)
     status = asset_status(c)
     print(('OK   ' if status['ready'] else 'WAIT ')+'assets: '+status['message'])
     print('APK must target 127.0.0.1 ports:', {k:c['ports'][k] for k in ('grpc','cdn','auth')})
+    print('ADB target:',c['serial'],'| emulator command:',c['emulator_start'] or '(start it yourself)')
+    if 'ADB' not in failed:
+        try:
+            selected=resolve_device(c)
+            device=dict(c,serial=selected)
+            print('Connected:',selected,'| ABIs:',adb(device,'shell','getprop','ro.product.cpu.abilist').strip())
+        except (RuntimeError,ValueError,subprocess.SubprocessError) as exc: print('WAIT Android:',exc)
     return failed
 
-def listener(port):
-    matches = [x for x in psutil.net_connections(kind='tcp')
-               if x.status == psutil.CONN_LISTEN and x.laddr.port == port]
-    if not matches: return None
-    if len({x.pid for x in matches}) != 1 or any(x.laddr.ip != '127.0.0.1' for x in matches):
-        raise RuntimeError(f'Port {port} has a non-local or ambiguous listener')
-    return psutil.Process(matches[0].pid)
+def listening(port):
+    try:
+        with socket.create_connection(('127.0.0.1',port),timeout=.3): return True
+    except OSError: return False
+
+def require_free(port):
+    # No system-wide process/network inspection (macOS may require root).
+    with socket.socket() as sock:
+        if os.name=='nt': sock.setsockopt(socket.SOL_SOCKET,socket.SO_EXCLUSIVEADDRUSE,1)
+        else: sock.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
+        try: sock.bind(('127.0.0.1',port))
+        except OSError as exc: raise RuntimeError(f'Port {port} is occupied. Stop the previous service or change config.') from exc
 
 def process_identity(p):
     return {'pid':p.pid, 'created':p.create_time(), 'exe':p.exe()}
@@ -148,28 +151,35 @@ def stop(c):
     path = Path(c['_runtime'])/'processes.json'
     if not path.exists(): print('No launcher-owned processes.'); return
     stopped_bridge = False
+    bridge_serial = c['serial']
     for entry in json.loads(path.read_text()):
         p = owned_process(entry)
         if not p: continue
-        if str(ROOT/'bridge.py') in p.cmdline() and c['_path'] in p.cmdline(): stopped_bridge = True
+        if str(ROOT/'bridge.py') in p.cmdline() and c['_path'] in p.cmdline():
+            stopped_bridge = True
+            bridge_serial = entry.get('serial',bridge_serial)
         family = p.children(recursive=True)
         for child in reversed(family):
             try: child.terminate()
             except psutil.NoSuchProcess: pass
         try: p.terminate()
         except psutil.NoSuchProcess: pass
-        psutil.wait_procs(family+[p], timeout=5)
+        _,alive=psutil.wait_procs(family+[p],timeout=5)
+        for remaining in alive:
+            try: remaining.kill()
+            except psutil.NoSuchProcess: pass
     if stopped_bridge:
         port = c['ports']['stream']
-        expected = [c['serial'], f'tcp:{port}', f'localabstract:scrcpy_{port:08x}']
-        forwards = adb(c,'forward','--list')
-        if any(line.split() == expected for line in forwards.splitlines()):
-            adb(c,'forward','--remove',f'tcp:{port}')
+        expected = [bridge_serial, f'tcp:{port}', f'localabstract:scrcpy_{port:08x}']
+        try:
+            device=dict(c,serial=bridge_serial)
+            forwards=adb(device,'forward','--list')
+            if any(line.split()==expected for line in forwards.splitlines()): adb(device,'forward','--remove',f'tcp:{port}')
+        except (OSError,subprocess.SubprocessError) as exc: print('ADB cleanup skipped:',exc)
     path.unlink()
     print('Launcher-owned services stopped. Emulator and pre-existing services left running.')
 
 def start(c, open_browser=True):
-    if os.name != 'nt': raise RuntimeError('Runtime is supported on Windows only')
     if doctor(c): raise RuntimeError('Resolve FAIL items first: setup / fetch-tools / init-db')
     runtime = Path(c['_runtime']); runtime.mkdir(parents=True, exist_ok=True)
     state = runtime/'processes.json'
@@ -177,55 +187,73 @@ def start(c, open_browser=True):
     entries = [e for e in entries if owned_process(e)]
     def spawn(args, cwd, name):
         with (runtime/(name+'.log')).open('ab') as log:
-            p = subprocess.Popen([str(a) for a in args],cwd=cwd,stdout=log,stderr=subprocess.STDOUT,creationflags=HIDDEN)
-        entries.append(process_identity(psutil.Process(p.pid)))
+            p = subprocess.Popen([str(a) for a in args],cwd=cwd,stdin=subprocess.DEVNULL,stdout=log,stderr=subprocess.STDOUT,creationflags=HIDDEN,start_new_session=os.name!='nt')
+        entries.append(dict(process_identity(psutil.Process(p.pid)),name=name,serial=c['serial'],ports=c['ports']))
         state.write_text(json.dumps(entries))
         return p
     def wait_port(port, proc):
         for _ in range(60):
             if proc.poll() is not None: raise RuntimeError('Service exited; inspect runtime logs')
-            if listener(port): return
+            if listening(port): return
             time.sleep(.5)
         raise RuntimeError('Service startup timed out; inspect runtime logs')
 
     # Check all ports before changing the emulator or starting services.
     server = Path(c['server_dir'])
-    present = []
-    for name, exe in [('grpc','lunar-tear.exe'),('cdn','octo-cdn.exe'),('auth','auth-server.exe')]:
-        p = listener(c['ports'][name]); present.append(bool(p))
-        if p and Path(p.exe()).resolve() != (server/'bin'/exe).resolve():
-            raise RuntimeError(f'{name} port is occupied by a different program')
-    if any(present) and not all(present): raise RuntimeError('Partial server already running; resolve it before start')
-    web = listener(c['ports']['web'])
+    managed={e.get('name'):e for e in entries if e.get('ports')==c['ports']}
+    server_running='server' in managed
+    web='bridge' in managed
+    for name in ('grpc','cdn','auth'):
+        if server_running:
+            if not listening(c['ports'][name]): raise RuntimeError('Managed server is incomplete; run stop, then start')
+        else: require_free(c['ports'][name])
     if web:
-        args = web.cmdline()
-        if str(ROOT/'bridge.py') not in args or c['_path'] not in args:
-            raise RuntimeError('Web port is occupied by another configuration/program')
-    if not web and listener(c['ports']['stream']): raise RuntimeError('Stream port is already occupied')
-    if c['emulator_manager']:
-        run([c['emulator_manager'],'control','--vmindex',str(c['emulator_index']),'launch'],capture_output=True,timeout=60)
-    for _ in range(60):
-        run([c['adb'],'connect',c['serial']],capture_output=True,timeout=10)
+        if not listening(c['ports']['web']): raise RuntimeError('Managed bridge is incomplete; run stop, then start')
+    else:
+        require_free(c['ports']['web'])
+        # ADB forward survives a bridge crash. Remove only our recorded mapping.
+        for e in json.loads(state.read_text()) if state.exists() else []:
+            if e.get('name')=='bridge' and e.get('ports')==c['ports'] and not owned_process(e):
+                device=dict(c,serial=e['serial'])
+                expected=[e['serial'],f"tcp:{c['ports']['stream']}",f"localabstract:scrcpy_{c['ports']['stream']:08x}"]
+                if any(line.split()==expected for line in adb(device,'forward','--list').splitlines()):
+                    adb(device,'forward','--remove',expected[1])
+        require_free(c['ports']['stream'])
+    command=emulator_start_command(c)
+    try:
+        resolve_device(c)
+        device_present=True
+    except RuntimeError:
+        device_present=False
+    if command and not web and not device_present:
+        with (runtime/'emulator.log').open('ab') as log:
+            subprocess.Popen(command,cwd=Path(c['_path']).parent,stdin=subprocess.DEVNULL,stdout=log,stderr=subprocess.STDOUT,creationflags=HIDDEN,start_new_session=os.name!='nt')
+    deadline=time.monotonic()+c['boot_timeout']
+    error='No device'
+    original_serial=c['serial']
+    while time.monotonic()<deadline:
         try:
-            if adb(c,'get-state').strip() == 'device' and adb(c,'shell','getprop','sys.boot_completed').strip() == '1': break
-        except subprocess.CalledProcessError: pass
+            c['serial']=resolve_device(dict(c,serial=original_serial))
+            if adb(c,'shell','getprop','sys.boot_completed').strip()=='1': break
+        except (RuntimeError,subprocess.SubprocessError) as exc: error=str(exc)
         time.sleep(2)
-    else: raise RuntimeError('Emulator did not finish booting')
+    else: raise RuntimeError('Android did not finish booting: '+error)
+    if web and managed['bridge'].get('serial')!=c['serial']: raise RuntimeError('Selected device changed; run stop before switching')
     for name in ('grpc','cdn','auth'):
         port = c['ports'][name]
         adb(c,'reverse',f'tcp:{port}',f'tcp:{port}')
-    if not all(present):
+    if not server_running:
         # Consistent SQLite snapshot before each launcher-created server start.
         backups = runtime/'backups'; backups.mkdir(exist_ok=True)
         with closing(sqlite3.connect(server/'db/game.db')) as src, closing(sqlite3.connect(backups/(time.strftime('%Y%m%d-%H%M%S')+'.db'))) as dst: src.backup(dst)
-        ports = c['ports']; args = [server/'bin/dev.exe','--no-color']
+        ports = c['ports']; args = [binary(server,'dev'),'--no-color']
         for name in ('grpc','cdn','auth'): args += ['--'+name+'.listen',f"127.0.0.1:{ports[name]}"]
         for name in ('grpc','cdn'): args += ['--'+name+'.public-addr',f"127.0.0.1:{ports[name]}"]
         args += ['--grpc.octo-url',f"http://127.0.0.1:{ports['cdn']}",'--grpc.auth-url',f"http://127.0.0.1:{ports['auth']}"]
         proc = spawn(args,server,'server')
         for name in ('grpc','cdn','auth'): wait_port(ports[name],proc)
     if not web:
-        proc = spawn([sys.executable,ROOT/'bridge.py','--config',c['_path']],ROOT,'bridge')
+        proc = spawn([sys.executable,ROOT/'bridge.py','--config',c['_path'],'--serial',c['serial']],ROOT,'bridge')
         wait_port(c['ports']['web'],proc)
     url = f"http://127.0.0.1:{c['ports']['web']}"
     print('Browser ready:',url)
@@ -235,15 +263,20 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config',default=str(ROOT/'config.json'))
     parser.add_argument('--no-browser',action='store_true')
-    parser.add_argument('command',choices=['init','fetch-tools','init-db','import-assets','install-apk','doctor','start','stop'])
+    parser.add_argument('command',choices=['init','devices','fetch-tools','init-db','import-assets','install-apk','doctor','start','stop'])
     args = parser.parse_args()
     if args.command == 'init':
         path = Path(args.config)
         if path.exists(): print('Existing config preserved.')
-        else: shutil.copyfile(ROOT/'config.example.json',path); print('Edit',path)
+        else:
+            path.parent.mkdir(parents=True,exist_ok=True)
+            shutil.copyfile(ROOT/'config.example.json',path)
+            print('Edit',path)
         return
     c = load_config(args.config)
-    if args.command == 'start': start(c,not args.no_browser)
+    if args.command == 'devices':
+        print(run([c['adb'],'devices','-l'],capture_output=True,text=True,timeout=15).stdout)
+    elif args.command == 'start': start(c,not args.no_browser)
     elif args.command == 'stop': stop(c)
     elif args.command == 'doctor':
         if doctor(c): sys.exit(1)
@@ -252,7 +285,7 @@ def main():
     elif args.command == 'import-assets': import_assets(c)
     elif args.command == 'install-apk':
         if not c['patched_apk'] or not Path(c['patched_apk']).is_file(): raise RuntimeError('Set patched_apk to your prepared APK')
-        run([c['adb'],'connect',c['serial']],capture_output=True,timeout=10)
+        c['serial']=resolve_device(c)
         print(adb(c,'install','--no-incremental','-r',c['patched_apk']))
 
 if __name__ == '__main__':

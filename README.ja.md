@@ -1,34 +1,30 @@
 # Lunar Tear Browser Launcher
 
-**[プロジェクトサイト](https://cloud-oc.github.io/lunar-tear-browser-launcher/?lang=ja) · [ダウンロード](https://github.com/cloud-oc/lunar-tear-browser-launcher/archive/refs/heads/main.zip)**
+[Website](https://cloud-oc.github.io/lunar-tear-browser-launcher/?lang=ja) · [Download ZIP](https://github.com/cloud-oc/lunar-tear-browser-launcher/archive/refs/heads/main.zip)
 
-[English](README.md) · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · **日本語**
+[English](README.md) · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja.md)
 
-Windows のブラウザーから、同じ PC の Android ゲームを操作するツールです。**Lunar Tear サーバー・Android エミュレーター・scrcpy** を接続します。
+Windows・macOS・Linux で **Lunar Tear、Android エミュレーター／端末、ブラウザー**を接続します。MuMu は必須ではありません。
 
-## 必要なもの
+Python 3.10 以降、Chrome/Edge、ADB（Android platform-tools）。変更済みグローバル版 3.7.1 APK、Android アセット、処理済み Master Data は別途必要です。
 
-- Windows 10/11、[Python 3.10 以降](https://www.python.org/downloads/windows/)、Chrome または Edge。
-- ADB が有効な Android エミュレーター。**MuMu Android 15 で動作確認済み**。ほかの互換エミュレーターは未検証です。
-- ご自身で用意した、**Lunar Tear 接続用に変更済みのグローバル版 3.7.1 APK**、Android アセット、処理済み Master Data。[準備ガイド（英語）→](docs/guide.en.md)
+1. 展開したプロジェクトを用意し、Android エミュレーター／端末を起動して ADB を有効にします。
+2. Setup を実行し、必要に応じて `config.json` を編集。`adb: "auto"` は ADB を検索、`serial: "auto"` は唯一の接続端末を選択します。複数の場合は Devices で ID を確認して指定してください。
+3. Tools と Database を実行し、詳細ガイドに従ってゲームファイルを配置します。
+4. Check、Play の順に実行し、ブラウザーで **「連接畫面」（画面に接続）→「啟動遊戲」（ゲーム起動）**を選択します。
 
-## 初回設定
+| Task | Windows (PowerShell) | macOS / Linux (Terminal) |
+|---|---|---|
+| Setup | `.\setup.cmd` | `sh setup.sh` |
+| Devices | `.\launch.cmd devices` | `sh launch.sh devices` |
+| Tools | `.\launch.cmd fetch-tools` | `sh launch.sh fetch-tools` |
+| Database | `.\launch.cmd init-db` | `sh launch.sh init-db` |
+| Check | `.\doctor.cmd` | `sh doctor.sh` |
+| Play | `.\start.cmd` | `sh start.sh` |
+| Stop | `.\stop.cmd` | `sh stop.sh` |
 
-1. プロジェクトをダウンロードして展開し、**`setup.cmd`** を実行。
-2. **`config.json`** に ADB のパス、エミュレーターの接続先、サーバーフォルダーを設定。
-3. プロジェクトフォルダーでターミナルを開き、次を実行：
+Windows x64、macOS/Linux x64・ARM64 の上流バイナリに対応。汎用 ADB はエミュレーター ID・TCP・USB を扱います。Android 環境にはゲームの ARM64 ライブラリ、ADB reverse、scrcpy の互換性が必要です。
 
-   ```powershell
-   .\.venv\Scripts\python.exe launcher.py fetch-tools
-   .\.venv\Scripts\python.exe launcher.py init-db
-   ```
+**Experimental:** 追加した OS／エミュレーターの組み合わせは実機未検証です。ゲームや翻訳パッチは含まれず、全編の動作も保証しません。GitHub Pages は案内とダウンロード用です。
 
-4. [詳細ガイド（英語）](docs/guide.en.md)に従ってゲームファイルを配置し、**`doctor.cmd`** で確認。
-
-## 起動
-
-**`start.cmd` →「連接畫面」（画面に接続）→「啟動遊戲」（ゲーム起動）**。終了時は **`stop.cmd`** を実行します。
-
-**実験的なプロジェクトです。** 映像配信とサーバー接続は確認済みですが、全編のプレイとゲーム内の対応言語は未検証です。ゲームファイルやセーブデータは含まれません。公開サイトは紹介・ダウンロード用で、ゲームを直接実行するものではありません。
-
-[詳細ガイド（英語）](docs/guide.en.md) · [Lunar Tear 本体](https://github.com/Walter-Sparrow/lunar-tear) · [ライセンス](THIRD_PARTY.md)
+[Detailed guide / 详细指南](docs/guide.en.md) · [Lunar Tear upstream](https://github.com/Walter-Sparrow/lunar-tear) · [Licenses](THIRD_PARTY.md)

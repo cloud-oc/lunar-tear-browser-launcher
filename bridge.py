@@ -7,13 +7,15 @@ import time
 import argparse
 from aiohttp import web, WSMsgType
 from app_config import ROOT, PACKAGE, load_config, asset_status
+from platform_support import HIDDEN
+from android_device import resolve_device, validate_serial
 
 CONFIG = None
 ADB = SERIAL = PORT = None
 active = asyncio.Lock()
 
 async def adb(*args):
-    p = await asyncio.create_subprocess_exec(ADB, '-s', SERIAL, *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, creationflags=subprocess.CREATE_NO_WINDOW)
+    p = await asyncio.create_subprocess_exec(ADB, '-s', SERIAL, *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, creationflags=HIDDEN)
     out, err = await p.communicate()
     if p.returncode:
         raise RuntimeError(err.decode(errors='replace'))
@@ -53,7 +55,7 @@ async def stream(request):
             await adb('forward', f'tcp:{stream_port}', f'localabstract:scrcpy_{scid}')
             log = (pathlib.Path(CONFIG['_runtime'])/'scrcpy.log').open('ab')
             video_config = CONFIG['video']
-            process = await asyncio.create_subprocess_exec(ADB, '-s', SERIAL, 'shell', 'CLASSPATH=/data/local/tmp/lunar-scrcpy.jar', 'app_process', '/', 'com.genymobile.scrcpy.Server', '3.3.4', f'scid={scid}', 'tunnel_forward=true', 'send_device_meta=false', 'video_codec=h264', 'audio_codec=raw', 'audio=true', 'control=true', f"max_size={video_config['max_size']}", f"max_fps={video_config['max_fps']}", f"video_bit_rate={video_config['bit_rate']}", 'clipboard_autosync=false', stdout=log, stderr=log, creationflags=subprocess.CREATE_NO_WINDOW)
+            process = await asyncio.create_subprocess_exec(ADB, '-s', SERIAL, 'shell', 'CLASSPATH=/data/local/tmp/lunar-scrcpy.jar', 'app_process', '/', 'com.genymobile.scrcpy.Server', '3.3.4', f'scid={scid}', 'tunnel_forward=true', 'send_device_meta=false', 'video_codec=h264', 'audio_codec=raw', f"audio={str(CONFIG['audio']).lower()}", 'control=true', f"max_size={video_config['max_size']}", f"max_fps={video_config['max_fps']}", f"video_bit_rate={video_config['bit_rate']}", 'clipboard_autosync=false', stdout=log, stderr=log, creationflags=HIDDEN)
             video = None
             for _ in range(30):
                 try:
@@ -64,7 +66,9 @@ async def stream(request):
                     if 'writer' in locals(): writer.close()
                     await asyncio.sleep(.2)
             if video is None: raise RuntimeError('无法启动模拟器画面串流')
-            audio, aw = await asyncio.open_connection('127.0.0.1', stream_port); writers.append(aw)
+            audio = None
+            if CONFIG['audio']:
+                audio, aw = await asyncio.open_connection('127.0.0.1', stream_port); writers.append(aw)
             control, cw = await asyncio.open_connection('127.0.0.1', stream_port); writers.append(cw)
             vh = await asyncio.wait_for(video.readexactly(12), 15)
             codec, width, height = struct.unpack('>III', vh)
@@ -87,7 +91,8 @@ async def stream(request):
                 except (asyncio.IncompleteReadError, ConnectionError, RuntimeError) as exc:
                     print('Stream ended:', repr(exc), flush=True)
                     await ws.close()
-            tasks = [asyncio.create_task(monitored_packets(video,b'V')), asyncio.create_task(monitored_packets(audio,b'A'))]
+            tasks = [asyncio.create_task(monitored_packets(video,b'V'))]
+            if audio is not None: tasks.append(asyncio.create_task(monitored_packets(audio,b'A')))
             async for msg in ws:
                 if msg.type != WSMsgType.TEXT: continue
                 d = json.loads(msg.data)
@@ -136,5 +141,8 @@ def create_app(config):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--config',default=str(ROOT/'config.json'))
-    cfg = load_config(parser.parse_args().config)
+    parser.add_argument('--serial',help='Resolved ADB device selected by the launcher')
+    args=parser.parse_args()
+    cfg = load_config(args.config)
+    cfg['serial']=validate_serial(args.serial) if args.serial else resolve_device(cfg)
     web.run_app(create_app(cfg),host='127.0.0.1',port=cfg['ports']['web'])

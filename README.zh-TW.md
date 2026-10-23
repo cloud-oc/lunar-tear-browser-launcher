@@ -1,34 +1,30 @@
 # Lunar Tear 瀏覽器啟動器
 
-**[專案網站](https://cloud-oc.github.io/lunar-tear-browser-launcher/?lang=zh-TW) · [下載專案](https://github.com/cloud-oc/lunar-tear-browser-launcher/archive/refs/heads/main.zip)**
+[Website](https://cloud-oc.github.io/lunar-tear-browser-launcher/?lang=zh-TW) · [Download ZIP](https://github.com/cloud-oc/lunar-tear-browser-launcher/archive/refs/heads/main.zip)
 
-[English](README.md) · [简体中文](README.zh-CN.md) · **繁體中文** · [日本語](README.ja.md)
+[English](README.md) · [简体中文](README.zh-CN.md) · [繁體中文](README.zh-TW.md) · [日本語](README.ja.md)
 
-透過 Windows 瀏覽器操作本機 Android 遊戲。啟動器連接 **Lunar Tear 私服、Android 模擬器與 scrcpy 串流**。
+在 Windows、macOS 或 Linux 上連接 **Lunar Tear、Android 模擬器／裝置與瀏覽器**。MuMu 並非必要。
 
-## 準備
+Python 3.10+、Chrome/Edge、ADB（Android platform-tools），以及自備的國際版 3.7.1 修改版 APK、Android 資源與處理後的 Master Data。
 
-- Windows 10/11、[Python 3.10+](https://www.python.org/downloads/windows/)、Chrome 或 Edge。
-- 已開啟 ADB 的 Android 模擬器；已測試 **MuMu Android 15**，其他相容模擬器尚未驗證。
-- 自備**連接 Lunar Tear 的國際版 3.7.1 修改版 APK**、Android 資源及處理後的 Master Data。[準備指南（英文）→](docs/guide.en.md)
+1. 解壓縮專案，啟動 Android 模擬器／裝置並開啟 ADB。
+2. 執行 Setup，依需要編輯 `config.json`。`adb: "auto"` 自動尋找 ADB；`serial: "auto"` 選擇唯一裝置。多裝置時用 Devices 查看並填入正確編號。
+3. 執行 Tools 與 Database，再依詳細指南準備遊戲檔案。
+4. 執行 Check，再執行 Play，在瀏覽器點選 **「連接畫面」→「啟動遊戲」**。
 
-## 首次設定
+| Task | Windows (PowerShell) | macOS / Linux (Terminal) |
+|---|---|---|
+| Setup | `.\setup.cmd` | `sh setup.sh` |
+| Devices | `.\launch.cmd devices` | `sh launch.sh devices` |
+| Tools | `.\launch.cmd fetch-tools` | `sh launch.sh fetch-tools` |
+| Database | `.\launch.cmd init-db` | `sh launch.sh init-db` |
+| Check | `.\doctor.cmd` | `sh doctor.sh` |
+| Play | `.\start.cmd` | `sh start.sh` |
+| Stop | `.\stop.cmd` | `sh stop.sh` |
 
-1. 下載並解壓縮專案，執行 **`setup.cmd`**。
-2. 編輯 **`config.json`**，填入 ADB 路徑、模擬器連線位址及伺服器目錄。
-3. 在專案目錄開啟終端機，執行：
+支援 Windows x64、macOS/Linux x64 與 ARM64，對應上游預編譯套件。通用 ADB 接受模擬器編號、TCP 與 USB 裝置；Android 環境仍須能執行遊戲的 ARM64 程式庫，並支援 ADB reverse 與 scrcpy。
 
-   ```powershell
-   .\.venv\Scripts\python.exe launcher.py fetch-tools
-   .\.venv\Scripts\python.exe launcher.py init-db
-   ```
+**Experimental:** 新增平台／模擬器組合尚未實測。不含遊戲檔案或翻譯修補檔，也不保證完整流程可玩。GitHub Pages 僅提供說明與下載。
 
-4. 依[詳細指南（英文）](docs/guide.en.md)放妥遊戲檔案，再執行 **`doctor.cmd`** 檢查。
-
-## 開始遊玩
-
-按兩下 **`start.cmd` →「連接畫面」→「啟動遊戲」**。結束後執行 **`stop.cmd`**。
-
-**實驗性專案：**已驗證串流與伺服器連線，完整流程及繁體中文內容尚未驗證。儲存庫不含遊戲檔案或存檔。專案網站提供介紹與下載，無法直接在線上執行遊戲。
-
-[詳細指南（英文）](docs/guide.en.md) · [上游 Lunar Tear](https://github.com/Walter-Sparrow/lunar-tear) · [授權資訊](THIRD_PARTY.md)
+[Detailed guide / 详细指南](docs/guide.en.md) · [Lunar Tear upstream](https://github.com/Walter-Sparrow/lunar-tear) · [Licenses](THIRD_PARTY.md)

@@ -1,74 +1,75 @@
-# Lunar Tear Browser Launcher
+# 配置与兼容性
 
-Windows 上的本机浏览器启动器：用一个 `config.json` 管理 **MuMu Android 模拟器 + Lunar Tear 私服 + scrcpy 浏览器串流**。
+[快速开始](../README.zh-CN.md) · [English](guide.en.md)
 
-首次准备完成后，双击 **`start.cmd` →「連接畫面」→「啟動遊戲」**。Chrome 显示画面、播放声音，并把鼠标点击和拖动传回游戏。游戏仍在本机安卓模拟器运行，不是 WebAssembly 移植版，也不是云游戏托管服务。
+## 支持的主机
 
-**状态：实验性工具。已在 Windows / MuMu Android 15 / 国际版 3.7.1 上验证标题画面、鼠标控制和本机服务请求。完整剧情与战斗尚未完成验证。控制页面是繁体中文，不代表游戏客户端包含繁体中文剧情。**
+启动器已实现 Windows x64、macOS x64/Apple Silicon、Linux x64/ARM64 的代码适配。`fetch-tools` 自动选择 Lunar Tear v1.0.2 对应系统／CPU 的发行包，并校验固定 SHA-256。上游没有对应的 Windows ARM64 固定包，不支持的架构会明确报错。
 
-```mermaid
-flowchart LR
-    A[Chrome / Edge] <-->|WebSocket: H.264 + PCM + 输入| B[Python 浏览器桥接]
-    B <-->|ADB + scrcpy| C[MuMu: Android 游戏]
-    C <-->|ADB reverse: 127.0.0.1| D[Lunar Tear: gRPC / CDN / Auth]
-    D <--> E[本地资源与 SQLite 存档]
-```
+这里的“支持”指代码适配，不是完整游玩认证。此次扩展未进行各平台或其他模拟器实机测试。
 
-## 需要准备什么
+安装 Python 3.10+、[Android platform-tools](https://developer.android.com/tools/releases/platform-tools)，使用支持 WebCodecs 的 Chrome/Edge。Linux 可能需要另外安装 Python venv 包。macOS 如出现下载程序的系统授权提示，请自行处理；启动器不会关闭系统安全保护或删除隔离标记。
 
-- Windows 10/11 x64；Python **3.10+**（推荐 3.12，[官网下载](https://www.python.org/downloads/windows/)）。
-- 已安装 MuMu，创建 **Android 15** 实例并开启 ADB；其他模拟器未验证。可把 `emulator_manager` 设为空字符串，自行启动兼容的本机模拟器。
-- Chrome 或 Edge，支持 WebCodecs；网页通过 `http://127.0.0.1` 打开。
-- 自行准备国际版 3.7.1 客户端、对应 Android 资源和已按上游指南处理的 Master Data；解压资源时需要 [7-Zip](https://www.7-zip.org/)。
-- 足够的磁盘空间容纳资源压缩包、解压后的资源和模拟器内部游戏数据；本机使用的资源包约 15 GB，完整环境需要更多空间。
+| 操作 | Windows PowerShell | macOS / Linux 终端 |
+|---|---|---|
+| 初始化 | `.\setup.cmd` | `sh setup.sh` |
+| 执行命令 | `.\launch.cmd 命令` | `sh launch.sh 命令` |
+| 启动／停止 | `.\start.cmd` / `.\stop.cmd` | `sh start.sh` / `sh stop.sh` |
+| 检查 | `.\doctor.cmd` | `sh doctor.sh` |
 
-仓库不包含 APK、游戏资源、Master Data、个人存档或签名密钥。不要把这些文件提交到 GitHub。
+macOS 另有 `setup.command`、`start.command` 双击入口；若 ZIP 未保留执行权限，使用 `sh` 命令即可。指定 Python：Unix 使用 `PYTHON=/path/to/python3 sh setup.sh`；Windows 使用 `setup.ps1 -Python "C:\Path\python.exe"`。
 
-## 第一次使用
+## 不绑定模拟器品牌
 
-### 1. 初始化环境
+启动安卓环境，开启 ADB／调试，并自行确认调试授权。用 `launch.cmd devices` 或 `sh launch.sh devices` 查看设备。
 
-下载此仓库，双击 `setup.cmd`。它仅创建项目内 `.venv`、安装 Python 依赖、复制配置模板，不修改系统 Python。随后编辑生成的 `config.json`。
+| 安卓环境 | 接入方式 |
+|---|---|
+| Android Studio Emulator / AVD | 使用 `emulator-5554` 一类编号或 `auto`；可配置 SDK emulator 的 `-avd` 启动命令 |
+| MuMu | 使用该实例真实 ADB 地址／编号；可选 MuMuManager 启动命令。旧配置的 `emulator_manager` / `emulator_index` 仍兼容 |
+| BlueStacks、雷电、夜神 | 开启产品的 ADB／调试功能，配置实际的 ADB 程序与设备编号／TCP 地址 |
+| Genymotion | 使用其配置的 ADB 安装及 `adb devices` 显示的设备 |
+| Waydroid / Android-x86 | 使用运行中安卓环境可访问的 ADB TCP 地址 |
+| 安卓真机 | USB 调试编号，或已配置好的 TCP 调试地址 |
 
-已有可用私服时，通常只需要修改：
+以上是接入方式，不代表每个品牌、版本都能运行游戏，各品牌也并非在所有系统都有版本。安卓环境仍须支持游戏 ARM64 原生库（原生支持或兼容转译）、`adb reverse`、可用 H.264 编码器和 scrcpy 输入控制。纯 x86 且没有兼容 ARM 转译的镜像不能运行游戏。之前使用的是 Android 15，不要默认最新镜像一定可用。声音取决于安卓版本和设备支持；可设 `audio: false` 仅串流画面（[scrcpy 声音说明](https://github.com/Genymobile/scrcpy/blob/v3.3.4/doc/audio.md)）。
 
-```json
-{
-  "adb": "D:/MuMuPlayer/nx_main/adb.exe",
-  "emulator_manager": "D:/MuMuPlayer/nx_main/MuMuManager.exe",
-  "serial": "127.0.0.1:16384",
-  "server_dir": "D:/Games/LunarTear/server"
-}
-```
+## 配置文件
 
-这是需要修改的字段示例，**不要用这段替换整个配置文件**。保留模板的其他字段。路径可以包含空格；相对路径以配置文件所在文件夹为基准。MuMu 的 ADB 端口随实例而变，请以你的实例设置为准。
+初始化会生成 `config.json`，不会覆盖已有配置。相对路径基于配置文件所在目录；工具路径支持 `~`，裸命令名称从 PATH 查找。
 
-已有指定 Python，可用：
+| 字段 | 说明 |
+|---|---|
+| `adb` | 默认 `auto`，查找 PATH、ANDROID_HOME/ANDROID_SDK_ROOT、常见 SDK 路径；也可填完整路径 |
+| `serial` | 默认 `auto`，只自动选择唯一设备。支持 `emulator-5554`、USB 编号、`host:port`、`[IPv6]:port`；多设备必须明确指定 |
+| `emulator_start` | 可选参数数组，例如 `["emulator", "-avd", "LunarTear"]`；空数组表示自行启动。不经过 shell 展开 |
+| `boot_timeout` | 等待安卓开机的秒数，默认 180 |
+| `server_dir` | 默认 `tools/lunar-tear-server` |
+| `scrcpy_server` | 固定版本 scrcpy 文件，由 fetch-tools 下载 |
+| `patched_apk` | 已修改并签名的国际版 3.7.1 APK |
+| `asset_archive` / `asset_sha1` | 可选本地 Android .7z 和预期 SHA-1 |
+| `seven_zip` | 默认 `auto`；可填 `7zz`、`7z` 或完整路径 |
+| `audio` | true／false |
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\setup.ps1 -Python "C:\Path\To\python.exe"
-```
+可把一个完整的[配置示例](../examples/)复制到工程根目录，命名为 `config.json`，再修改路径和编号。示例地址不是所有模拟器的固定地址。默认通用配置没有 MuMu 依赖。远程 ADB 只应连接你自己的可信设备；网页和游戏服务仍只监听本机，通过 ADB reverse 供 USB／TCP 设备访问。
 
-### 2. 准备开源工具与新服务端
+## 游戏准备
 
-在工程目录打开终端：
+使用对应平台的命令入口执行 `fetch-tools`、`init-db`。工具从官方发行页下载并校验；数据库只新建，不覆盖或升级旧存档。
 
-```powershell
-.\.venv\Scripts\python.exe launcher.py fetch-tools
-.\.venv\Scripts\python.exe launcher.py init-db
-```
+使用[上游指南](https://github.com/Walter-Sparrow/lunar-tear)和[修改脚本](https://gitlab.com/walter-sparrow-group/lunar-scripts)处理 APK 与 Master Data。本工程不提供、修改或签名游戏文件，原版 APK 无法直接连接私服。
 
-`fetch-tools` 从官方 GitHub Release 下载 **Lunar Tear v1.0.2 Windows amd64** 与 **scrcpy-server v3.3.4**，检查固定 SHA-256。已有服务端目录会被保留；请自行确认它是兼容版本。`init-db` 只创建新库，已有 `db/game.db` 不会被覆盖或升级。
+| 客户端用途 | 默认目标 |
+|---|---|
+| gRPC | `127.0.0.1:18003` |
+| CDN / HTTP | `127.0.0.1:18080` |
+| Auth | `127.0.0.1:13000` |
 
-### 3. 准备游戏资源与客户端（只需一次）
-
-遵循 [Lunar Tear 项目指南](https://github.com/Walter-Sparrow/lunar-tear) 和 [lunar-scripts](https://gitlab.com/walter-sparrow-group/lunar-scripts)。本项目不从第三方站点下载游戏文件，也不自动修改或签名 APK。**未修改的官方 APK 不能直接连接本机私服。**
-
-将处理后的 Master Data `*.bin.e` 放入 `<server_dir>/assets/release/`。Android 资源支持两种目录：
+地址必须与配置中的 `ports` 一致。资源布局：
 
 ```text
-server_dir/
-  bin/dev.exe
+<server_dir>/
+  bin/dev[.exe]
   db/game.db
   assets/
     release/*.bin.e
@@ -78,80 +79,20 @@ server_dir/
       resources/...
 ```
 
-或将 `list.bin`、`assetbundle`、`resources` 放在 `revisions/0/android/` 下。保留归档的其他 revisions。
+也支持 `revisions/0/android/`，保留其他 revisions。配置本地 .7z 与 7-Zip 后执行 `import-assets`；已有 `assets/revisions/` 不会被覆盖。中断后需自行检查部分解压数据。网页就绪状态仅检查布局，不代表全部资源完整。
 
-对于根目录为 `revisions/` 的本地 `.7z`，可填写 `asset_archive`、`seven_zip`，并建议填写来源公布的 `asset_sha1`，然后运行：
+启动安卓环境、填写 `patched_apk` 后执行 `install-apk`。如果原应用签名不同，覆盖安装可能失败；启动器不会自动卸载应用或删除数据。
 
-```powershell
-.\.venv\Scripts\python.exe launcher.py import-assets
-```
+## 日常使用与升级
 
-该命令检查归档路径、可选 SHA-1 和解压退出码；为保护已有数据，如果 `assets/revisions/` 已存在，会拒绝再次导入。中断后的部分目录需自行检查处理。网页的“资源就绪”只检查目录和目录文件存在，不等同于完整性校验。
+先执行 `doctor`，处理缺失文件和设备提示，再执行 `start`，在浏览器点击「連接畫面」和「啟動遊戲」。退出游戏后执行 `stop`，仅停止本配置记录的服务，不关闭模拟器。未知来源的同端口服务会被拒绝复用。
 
-修改 APK 时必须使用与配置一致的地址，默认：
+从初版升级前，先停止旧版服务。手动启动或旧版未记录的服务可能需手动关闭。日志、备份保存在 `runtime/`；不同名称的配置使用不同子目录。存档为 `<server_dir>/db/game.db`，每次新启动服务前自动备份，但不会自动清理备份。恢复前先停服。
 
-| 客户端用途 | 默认目标 |
-|---|---|
-| 游戏 gRPC | `127.0.0.1:18003` |
-| CDN / HTTP | `127.0.0.1:18080` |
-| Auth | `127.0.0.1:13000` |
+画质字段：`video.max_size`、`video.max_fps`、`video.bit_rate`。指定其他配置：`sh launch.sh --config config.other.local.json start` 或 `.\launch.cmd --config config.other.local.json start`。
 
-将已修改并签名的 APK 路径填入 `patched_apk`，在模拟器已启动并连接 ADB 的情况下运行：
+卡在加载页时检查资源、Master Data 和 APK 地址；设备离线／未授权时先解决 ADB；声音异常可暂设 `audio: false`。ADB 接通不代表游戏 ABI 兼容。网页语言不改变游戏文本。此工程不是公网多人服务。
 
-```powershell
-.\.venv\Scripts\python.exe launcher.py install-apk
-```
+## 验证范围
 
-安装使用 `adb install -r`。若已有不同签名的同包名应用，安装可能失败；工具不会自动卸载它，以免删除数据。游戏内协议、年龄确认等应由使用者自己完成。
-
-### 4. 启动
-
-双击 `doctor.cmd` 检查文件。解决 `FAIL`，准备完成后双击 `start.cmd`。启动器会：
-
-1. 检查配置、端口占用及已有服务身份。
-2. 启动指定 MuMu 实例，等待 Android 完成开机。
-3. 设置三条 ADB reverse，将模拟器回环地址映射到 Windows 服务。
-4. 为新启动的服务备份 SQLite 存档，并启动 gRPC / CDN / Auth。
-5. 启动浏览器桥接，打开 `http://127.0.0.1:18765`。
-
-点击「連接畫面」后，可直接用鼠标操作画面；声音需要浏览器用户手势开启。点击「斷開連接」后可以重新连接。串流每个桥接实例仅允许一个连接。
-
-## 配置与维护
-
-| 配置 | 说明 |
-|---|---|
-| `emulator_index` | MuMu 实例编号，默认 0 |
-| `ports.web` | 浏览器入口端口，默认 18765 |
-| `ports.stream` | scrcpy ADB 转发端口，默认 27183 |
-| `ports.grpc/cdn/auth` | 必须与已修改客户端中的端口相同；修改后通常需要重新修改 APK |
-| `video.max_size` | 画面最大边，默认 1280 |
-| `video.max_fps` | 帧率上限，默认 30 |
-| `video.bit_rate` | 视频码率，默认 5000000 |
-
-`stop.cmd` 只停止本工程记录并核对过进程 ID、创建时间和程序路径的服务。它不会关闭 MuMu，也不会停止启动前已经运行的服务。退出游戏再停止服务，避免中断正在进行的请求。关闭网页会断开串流，但服务继续运行。
-
-- 日志：`runtime/bridge.log`、`runtime/server.log`、`runtime/scrcpy.log`。
-- 自动备份：`runtime/backups/`；当前游戏存档：`<server_dir>/db/game.db`。
-- 备份不会自动清理；定期自行归档。手动恢复存档前先停服。
-- CLI：`launcher.py --help`；指定其他配置：`launcher.py --config config.other.local.json start`。
-- 仅绑定 `127.0.0.1`，检查 Host 与 WebSocket Origin。不提供公网访问、远程登录或多用户隔离，**不要反向代理到公网**。
-
-## 常见问题
-
-- **停在加载页面**：检查资源是否完整、Master Data 是否已处理、三个服务日志、APK 地址与端口是否一致。
-- **标题正常但没中文**：浏览器 UI 的语言与游戏文本不同，本工程不提供汉化补丁，也未验证国际版 3.7.1 的繁体中文剧情支持。
-- **端口占用**：启动器会拒绝未知程序占用的端口；先确认该程序用途。不要随意终止不认识的进程。
-- **模拟器无响应**：确认 Android 15 实例启动、ADB 开启、`serial` 正确。浏览器不能代替安卓运行环境。
-- **资源显示 WAIT 仍能连接画面**：串流可用于检查模拟器，但「啟動遊戲」会被禁用。
-- **Python 版本太旧**：安装 3.10+，或用 `setup.ps1 -Python` 明确选择新版本。
-
-## 开发与验证
-
-```powershell
-.\.venv\Scripts\python.exe -m unittest discover -s tests -v
-```
-
-测试覆盖配置路径与端口限制、新建数据库及保留已有存档、服务端网页的 Host/Origin 限制。`ci/windows-tests.yml` 是可选 GitHub Actions 模板，目前未启用；拥有工作流写入权限后，可将它复制到 `.github/workflows/test.yml`。这些测试不包含游戏文件，不执行完整游戏流程。
-
-代码采用 MIT；`vendor/migrations` 来自 Lunar Tear v1.0.2，保留上游 MIT 许可。scrcpy 由使用者下载，采用 Apache-2.0。详见 [THIRD_PARTY.md](../THIRD_PARTY.md)。本项目与游戏发行商及上述上游项目无隶属关系。
-
+此次只做离线单元检查，没有实际安装 macOS/Linux 环境、启动其他模拟器或进入游戏。`ci/windows-tests.yml` 已包含三个系统的可选测试矩阵，但未启用云端工作流。离线测试验证平台选择、归档安全和模拟设备选择，不认证实际游戏兼容性。

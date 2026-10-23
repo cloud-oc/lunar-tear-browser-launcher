@@ -24,8 +24,8 @@ class ConfigTests(unittest.TestCase):
         self.example['server_dir'] = 'space in path/server'
         self.assertEqual(self.load()['server_dir'],str((Path(self.temp.name)/'space in path/server').resolve()))
 
-    def test_remote_emulator_rejected(self):
-        self.example['serial'] = '192.168.1.2:5555'
+    def test_malformed_adb_target_rejected(self):
+        self.example['serial'] = '-s other-device'
         with self.assertRaises(ValueError): self.load()
 
     def test_conflicting_ports_rejected(self):

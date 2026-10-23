@@ -1,0 +1,31 @@
+{
+  "adb": "D:/MuMuPlayer/nx_main/adb.exe",
+  "emulator_start": [
+    "D:/MuMuPlayer/nx_main/MuMuManager.exe",
+    "control",
+    "--vmindex",
+    "0",
+    "launch"
+  ],
+  "boot_timeout": 180,
+  "serial": "127.0.0.1:16384",
+  "server_dir": "tools/lunar-tear-server",
+  "scrcpy_server": "tools/scrcpy-server-v3.3.4",
+  "patched_apk": "",
+  "asset_archive": "",
+  "asset_sha1": "",
+  "seven_zip": "auto",
+  "audio": true,
+  "ports": {
+    "web": 18765,
+    "grpc": 18003,
+    "cdn": 18080,
+    "auth": 13000,
+    "stream": 27183
+  },
+  "video": {
+    "max_size": 1280,
+    "max_fps": 30,
+    "bit_rate": 5000000
+  }
+}

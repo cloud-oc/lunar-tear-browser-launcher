@@ -1,0 +1,29 @@
+{
+  "adb": "auto",
+  "emulator_start": [
+    "emulator",
+    "-avd",
+    "YOUR_AVD_NAME"
+  ],
+  "boot_timeout": 180,
+  "serial": "emulator-5554",
+  "server_dir": "tools/lunar-tear-server",
+  "scrcpy_server": "tools/scrcpy-server-v3.3.4",
+  "patched_apk": "",
+  "asset_archive": "",
+  "asset_sha1": "",
+  "seven_zip": "auto",
+  "audio": true,
+  "ports": {
+    "web": 18765,
+    "grpc": 18003,
+    "cdn": 18080,
+    "auth": 13000,
+    "stream": 27183
+  },
+  "video": {
+    "max_size": 1280,
+    "max_fps": 30,
+    "bit_rate": 5000000
+  }
+}
