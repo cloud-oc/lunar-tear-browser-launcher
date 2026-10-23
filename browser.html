@@ -1,0 +1,36 @@
+<!doctype html><html lang="zh-Hant"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lunar Tear · 本機遊玩</title>
+<style>body{margin:0;background:#151713;color:#e5e1d3;font:15px system-ui}header{display:flex;gap:14px;align-items:center;padding:16px 24px;flex-wrap:wrap;border-bottom:1px solid #424438}h1{font-size:18px;margin:0 auto 0 0;font-weight:500;letter-spacing:2px}button{background:#dfd8c3;color:#22291e;border:0;padding:10px 16px;border-radius:3px;cursor:pointer}button:disabled{opacity:.45;cursor:default}main{display:grid;place-items:center;padding:18px}canvas{max-width:100%;max-height:calc(100vh - 190px);background:#090a08;touch-action:none;box-shadow:0 12px 50px #0006}p{color:#b4b7a9;font-size:13px}#state{color:#d7cc9d}#download{padding:12px 24px;background:#292c24;font-size:14px}a{color:inherit}</style>
+<header><h1>LUNAR TEAR</h1><button id="connect">連接畫面</button><button id="launch" disabled>啟動遊戲</button><button id="back" disabled>返回</button><button id="sound">開啟聲音</button><button id="full">全螢幕</button><span id="state">尚未連接</span></header>
+<div id="download">正在讀取資源狀態…</div><main><canvas id="screen" width="1280" height="720"></canvas><p>使用滑鼠點擊、按住拖曳操作。遊戲由這台電腦的 MuMu 模擬器執行。</p></main>
+<script>
+const canvas=document.querySelector('#screen'),ctx=canvas.getContext('2d'),state=document.querySelector('#state');
+let socket,decoder,config,ac,audioTime=0,frames=0,pressed=false,ready=false;
+function send(v){if(socket?.readyState===1)socket.send(JSON.stringify(v))}
+async function audioOn(){if(!ac)ac=new AudioContext({sampleRate:48000});await ac.resume();document.querySelector('#sound').textContent='聲音已開啟'}
+document.querySelector('#sound').onclick=audioOn;
+document.querySelector('#full').onclick=()=>canvas.requestFullscreen();
+document.querySelector('#launch').onclick=()=>send({type:'launch'});
+document.querySelector('#back').onclick=()=>send({type:'key',key:4});
+function codecFromSps(d){for(let i=0;i<d.length-7;i++){let n=0;if(d[i]===0&&d[i+1]===0&&d[i+2]===1)n=i+3;else if(d[i]===0&&d[i+1]===0&&d[i+2]===0&&d[i+3]===1)n=i+4;if(n&&(d[n]&31)===7)return 'avc1.'+Array.from(d.slice(n+1,n+4)).map(x=>x.toString(16).padStart(2,'0')).join('')}return 'avc1.42E01E'}
+document.querySelector('#connect').onclick=async()=>{
+ if(socket&&socket.readyState!==WebSocket.CLOSED){socket.close();return}
+ if(!window.VideoDecoder){state.textContent='請使用支援 WebCodecs 的 Chrome 或 Edge';return}
+ if(decoder&&decoder.state!=='closed')decoder.close();config=null;frames=0;await audioOn();
+ decoder=new VideoDecoder({output:f=>{if(canvas.width!==f.displayWidth||canvas.height!==f.displayHeight){canvas.width=f.displayWidth;canvas.height=f.displayHeight}ctx.drawImage(f,0,0);f.close();frames++;window.renderedFrames=frames;state.textContent='已連接';},error:e=>{console.error(e);state.textContent='解碼失敗：'+e.message}});
+ socket=new WebSocket('ws://'+location.host+'/stream');socket.binaryType='arraybuffer';state.textContent='連接中…';
+ document.querySelector('#connect').textContent='斷開連接';
+ socket.onclose=()=>{state.textContent='連接已關閉';document.querySelector('#connect').textContent='連接畫面';document.querySelector('#back').disabled=true;document.querySelector('#launch').disabled=true;pressed=false;audioTime=0;if(decoder&&decoder.state!=='closed')decoder.close()};
+ socket.onmessage=e=>{
+  if(typeof e.data==='string'){const m=JSON.parse(e.data);if(m.type==='video'){canvas.width=m.width;canvas.height=m.height;document.querySelector('#back').disabled=false;document.querySelector('#launch').disabled=!ready}else if(m.text){state.textContent=m.text}return}
+  const d=new Uint8Array(e.data),view=new DataView(e.data),flags=view.getBigUint64(1),payload=d.slice(13);
+  if(d[0]===65){if(!ac||ac.state!=='running')return;const samples=new DataView(payload.buffer,payload.byteOffset,payload.byteLength),n=payload.length/4;if(!Number.isInteger(n))return;let b=ac.createBuffer(2,n,48000);for(let ch=0;ch<2;ch++){const out=b.getChannelData(ch);for(let i=0;i<n;i++)out[i]=samples.getInt16(i*4+ch*2,true)/32768}if(audioTime<ac.currentTime||audioTime>ac.currentTime+.4)audioTime=ac.currentTime+.04;let src=ac.createBufferSource();src.buffer=b;src.connect(ac.destination);src.start(audioTime);audioTime+=n/48000;return}
+  if(flags&(1n<<63n)){config=payload;decoder.configure({codec:codecFromSps(config),optimizeForLatency:true});return}
+  if(decoder.state!=='configured')return;const key=!!(flags&(1n<<62n));let data=payload;if(key&&config){data=new Uint8Array(config.length+payload.length);data.set(config);data.set(payload,config.length)}
+  decoder.decode(new EncodedVideoChunk({type:key?'key':'delta',timestamp:Number(flags&((1n<<62n)-1n)),data}));
+ };
+};
+function touch(e,action){const r=canvas.getBoundingClientRect();send({type:'touch',action,x:Math.round((e.clientX-r.left)*canvas.width/r.width),y:Math.round((e.clientY-r.top)*canvas.height/r.height),width:canvas.width,height:canvas.height});e.preventDefault()}
+canvas.onpointerdown=e=>{pressed=true;canvas.setPointerCapture(e.pointerId);touch(e,0)};canvas.onpointermove=e=>{if(pressed)touch(e,2)};canvas.onpointerup=e=>{if(pressed)touch(e,1);pressed=false};canvas.onpointercancel=e=>{if(pressed)touch(e,1);pressed=false};
+async function progress(){try{const s=await(await fetch('/status')).json();ready=s.ready;document.querySelector('#download').textContent=s.ready?'已找到資源目錄，可嘗試啟動遊戲；此檢查不代表全部資源完整。':'資源尚未就緒：請依 README 準備 Android 資源與 Master Data。';document.querySelector('#launch').disabled=!(ready&&socket?.readyState===1)}catch(e){document.querySelector('#download').textContent='無法連接本機服務'}}progress();setInterval(progress,5000);
+</script></html>
